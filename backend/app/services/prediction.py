@@ -3,12 +3,14 @@ import os
 import joblib
 import json
 
-# Add parent directory to path to import train_caa_tios_nd
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")))
-from train_caa_tios_nd import predict_itinerary
+# Add parent directory to path to import sys
+import os
 
-MODEL_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../caa_tios_nd_model.joblib"))
-REPORT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../training_report.json"))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../')))
+from model import train_caa_tios_nd
+
+MODEL_PATH = os.path.join(os.path.dirname(__file__), '../../../model/caa_tios_nd_model.joblib')
+REPORT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../model/training_report.json"))
 LOCATIONS_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data/locations.json"))
 
 # Global variables to cache the model and vocabularies
@@ -47,10 +49,21 @@ def predict(city: str, days: int, preference: str, locations: list) -> dict:
         "city": city,
         "days": days,
         "preference": preference,
-        "locations": processed_locations
+        "locations": processed_locations,
+        "metadata": {
+            "city": city,
+            "days": days,
+            "preference": preference,
+            "optimization": {
+                "score": 0.0,
+                "iterations": 0,
+                "seed": 0
+            },
+            "model_schema": "wanderai-v1"
+        }
     }
     
-    result = predict_itinerary(trip_data, artifact)
+    result = train_caa_tios_nd.predict_itinerary(trip_data, artifact)
     return result
 
 def get_cities():

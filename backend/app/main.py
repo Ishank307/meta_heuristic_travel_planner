@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routes.api import router
 
 app = FastAPI(
-    title="CAA-TIOS-ND Backend API",
+    title="WanderAI Backend API",
     description="Travel Itinerary Optimization System Backend",
     version="1.0.0"
 )
