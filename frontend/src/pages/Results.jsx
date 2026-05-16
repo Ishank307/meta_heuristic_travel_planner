@@ -103,7 +103,7 @@ export default function Results() {
 
         {/* Map View */}
         <div className="hidden md:block flex-1 bg-slate-900 relative">
-          <Map itinerary={result.itinerary} city={form.city} />
+          <Map itinerary={result.itinerary} selectedLocations={form.selectedLocations} />
         </div>
       </div>
     </div>

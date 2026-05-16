@@ -1,30 +1,23 @@
-import { GoogleMap, useJsApiLoader, Marker, Polyline } from '@react-google-maps/api';
+import { GoogleMap, useJsApiLoader, Marker, DirectionsRenderer } from '@react-google-maps/api';
 import { useMemo, useState, useEffect } from 'react';
 import { api } from '../services/api';
+
+const libraries = ['places'];
 
 const containerStyle = {
   width: '100%',
   height: '100%'
 };
 
-export default function Map({ itinerary, city }) {
-  const [locations, setLocations] = useState([]);
-  
-  const { isLoaded } = useJsApiLoader({
+export default function Map({ itinerary, selectedLocations }) {
+  const { isLoaded, loadError } = useJsApiLoader({
     id: 'google-map-script',
-    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
+    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
+    libraries
   });
 
-  useEffect(() => {
-    const fetchLocs = async () => {
-      const allLocs = await api.getLocations(city);
-      setLocations(allLocs);
-    };
-    if (city) fetchLocs();
-  }, [city]);
-
   const mapData = useMemo(() => {
-    if (!itinerary || !locations.length) return { markers: [], path: [] };
+    if (!itinerary || !selectedLocations || !selectedLocations.length) return { markers: [], path: [] };
     
     const markers = [];
     const path = [];
@@ -33,7 +26,7 @@ export default function Map({ itinerary, city }) {
     const schedules = itinerary.flatMap(day => day.schedule);
     
     schedules.forEach((item, index) => {
-      const locData = locations.find(l => l.name === item.location);
+      const locData = selectedLocations.find(l => l.name === item.location);
       if (locData) {
         const point = { lat: locData.lat, lng: locData.lng };
         markers.push({ ...point, label: (index + 1).toString(), title: item.location });
@@ -41,13 +34,45 @@ export default function Map({ itinerary, city }) {
       }
     });
 
-    return { markers, path };
-  }, [itinerary, locations]);
+    return { markers };
+  }, [itinerary, selectedLocations]);
+
+  const [directions, setDirections] = useState(null);
+
+  useEffect(() => {
+    if (!isLoaded || mapData.markers.length < 2) return;
+
+    const directionsService = new window.google.maps.DirectionsService();
+
+    const origin = mapData.markers[0];
+    const destination = mapData.markers[mapData.markers.length - 1];
+    const waypoints = mapData.markers.slice(1, -1).map(marker => ({
+      location: marker,
+      stopover: true
+    }));
+
+    directionsService.route(
+      {
+        origin: origin,
+        destination: destination,
+        waypoints: waypoints,
+        travelMode: window.google.maps.TravelMode.DRIVING,
+      },
+      (result, status) => {
+        if (status === window.google.maps.DirectionsStatus.OK) {
+          setDirections(result);
+        } else {
+          console.error(`Error fetching directions: ${status}`);
+        }
+      }
+    );
+  }, [isLoaded, mapData.markers]);
 
   const center = mapData.markers.length > 0 
     ? mapData.markers[0] 
     : { lat: 18.944, lng: 72.823 }; // Fallback Mumbai
 
+  if (loadError) return <div className="w-full h-full bg-slate-800 rounded-xl flex items-center justify-center text-red-400">Error loading map</div>;
   if (!isLoaded) return <div className="w-full h-full bg-slate-800 animate-pulse rounded-xl"></div>;
 
   return (
@@ -79,13 +104,16 @@ export default function Map({ itinerary, city }) {
             title={marker.title}
           />
         ))}
-        {mapData.path.length > 1 && (
-          <Polyline
-            path={mapData.path}
+        {directions && (
+          <DirectionsRenderer
+            directions={directions}
             options={{
-              strokeColor: '#3b82f6',
-              strokeOpacity: 0.8,
-              strokeWeight: 4,
+              suppressMarkers: true,
+              polylineOptions: {
+                strokeColor: '#3b82f6',
+                strokeOpacity: 0.8,
+                strokeWeight: 4,
+              }
             }}
           />
         )}

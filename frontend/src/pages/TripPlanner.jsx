@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Autocomplete, useJsApiLoader } from '@react-google-maps/api';
 import { api } from '../services/api';
-import { MapPin, Calendar, Settings, ChevronRight, Loader2 } from 'lucide-react';
+import { MapPin, Calendar, Settings, ChevronRight, Loader2, Search, Plus } from 'lucide-react';
+
+const libraries = ['places'];
 
 export default function TripPlanner() {
   const navigate = useNavigate();
@@ -10,11 +13,19 @@ export default function TripPlanner() {
   const [loading, setLoading] = useState({ cities: true, locations: false, submit: false });
   const [error, setError] = useState(null);
 
+  const [autocomplete, setAutocomplete] = useState(null);
+
+  const { isLoaded } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
+    libraries
+  });
+
   const [form, setForm] = useState({
     city: '',
     days: 1,
     preference: 'time',
-    selectedLocations: []
+    selectedLocations: [] // Array of rich objects { name, lat, lng, rating, visit_duration }
   });
 
   useEffect(() => {
@@ -51,15 +62,39 @@ export default function TripPlanner() {
     fetchLocations();
   }, [form.city]);
 
-  const handleLocationToggle = (locName) => {
+  const handleLocationToggle = (locObj) => {
     setForm(f => {
-      const isSelected = f.selectedLocations.includes(locName);
+      const isSelected = f.selectedLocations.some(l => l.name === locObj.name);
       if (isSelected) {
-        return { ...f, selectedLocations: f.selectedLocations.filter(n => n !== locName) };
+        return { ...f, selectedLocations: f.selectedLocations.filter(n => n.name !== locObj.name) };
       } else {
-        return { ...f, selectedLocations: [...f.selectedLocations, locName] };
+        return { ...f, selectedLocations: [...f.selectedLocations, locObj] };
       }
     });
+  };
+
+  const handlePlaceSelect = () => {
+    if (autocomplete !== null) {
+      const place = autocomplete.getPlace();
+      if (!place.geometry) return;
+
+      const newLoc = {
+        name: place.name,
+        lat: place.geometry.location.lat(),
+        lng: place.geometry.location.lng(),
+        rating: place.rating || 4.0, // Default rating if none
+        open_time: "08:00", // Default
+        close_time: "20:00", // Default
+        visit_duration: 60, // Default 1 hour
+        mandatory: false
+      };
+
+      setForm(f => {
+        const isSelected = f.selectedLocations.some(l => l.name === newLoc.name);
+        if (isSelected) return f;
+        return { ...f, selectedLocations: [...f.selectedLocations, newLoc] };
+      });
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -164,35 +199,84 @@ export default function TripPlanner() {
               </span>
             </div>
 
+            {/* Autocomplete Input */}
+            {isLoaded && (
+              <div className="mb-6 relative">
+                <label className="text-sm font-medium text-slate-300 flex items-center gap-2 mb-2">
+                  <Search className="w-4 h-4" /> Search for any place
+                </label>
+                <Autocomplete
+                  onLoad={setAutocomplete}
+                  onPlaceChanged={handlePlaceSelect}
+                >
+                  <input
+                    type="text"
+                    placeholder="Search Google Maps to add..."
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                    onKeyDown={(e) => { if(e.key === 'Enter') e.preventDefault(); }}
+                  />
+                </Autocomplete>
+              </div>
+            )}
+
+            {/* Custom Selected Places (from Autocomplete) */}
+            {form.selectedLocations.filter(loc => !locations.some(l => l.name === loc.name)).length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-sm font-medium text-emerald-400 mb-3">Custom Selected Places:</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {form.selectedLocations
+                    .filter(loc => !locations.some(l => l.name === loc.name))
+                    .map((loc, idx) => (
+                      <div key={`custom-${idx}`} className="bg-blue-500/10 border border-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.15)] rounded-xl p-4 flex flex-col gap-2 relative">
+                        <button 
+                          type="button"
+                          className="absolute top-2 right-2 text-slate-400 hover:text-white"
+                          onClick={() => handleLocationToggle(loc)}
+                        >
+                          ✕
+                        </button>
+                        <h3 className="font-medium text-white pr-6">{loc.name}</h3>
+                        <span className="text-xs font-semibold bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded w-max">
+                          ★ {loc.rating}
+                        </span>
+                      </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {loading.locations ? (
               <div className="flex justify-center py-12 text-slate-400">
                 <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {locations.map(loc => (
-                  <div 
-                    key={loc.name}
-                    onClick={() => handleLocationToggle(loc.name)}
-                    className={`cursor-pointer rounded-xl p-4 border transition-all duration-200 flex flex-col gap-2
-                      ${form.selectedLocations.includes(loc.name) 
-                        ? 'bg-blue-500/10 border-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.15)]' 
-                        : 'bg-slate-900 border-slate-700 hover:border-slate-500'}
-                    `}
-                  >
-                    <div className="flex justify-between items-start">
-                      <h3 className="font-medium text-white">{loc.name}</h3>
-                      <span className="text-xs font-semibold bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded">
-                        ★ {loc.rating}
-                      </span>
+              <>
+                <h3 className="text-sm font-medium text-slate-300 mb-3">Recommended for {form.city}:</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {locations.map(loc => (
+                    <div 
+                      key={loc.name}
+                      onClick={() => handleLocationToggle(loc)}
+                      className={`cursor-pointer rounded-xl p-4 border transition-all duration-200 flex flex-col gap-2
+                        ${form.selectedLocations.some(l => l.name === loc.name) 
+                          ? 'bg-blue-500/10 border-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.15)]' 
+                          : 'bg-slate-900 border-slate-700 hover:border-slate-500'}
+                      `}
+                    >
+                      <div className="flex justify-between items-start">
+                        <h3 className="font-medium text-white">{loc.name}</h3>
+                        <span className="text-xs font-semibold bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded">
+                          ★ {loc.rating}
+                        </span>
+                      </div>
+                      <div className="text-sm text-slate-400 flex gap-4">
+                        <span>{loc.open_time} - {loc.close_time}</span>
+                        <span>{loc.visit_duration} mins</span>
+                      </div>
                     </div>
-                    <div className="text-sm text-slate-400 flex gap-4">
-                      <span>{loc.open_time} - {loc.close_time}</span>
-                      <span>{loc.visit_duration} mins</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
 
