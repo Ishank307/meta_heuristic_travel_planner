@@ -46,21 +46,62 @@ export default function TripPlanner() {
   }, []);
 
   useEffect(() => {
-    if (!form.city) return;
     const fetchLocations = async () => {
+      if (!form.city) {
+        setLocations([]);
+        return;
+      }
       setLoading(l => ({ ...l, locations: true }));
       try {
-        const data = await api.getLocations(form.city);
-        setLocations(data);
-        setForm(f => ({ ...f, selectedLocations: [] }));
+        let backendLocations = [];
+        try {
+          backendLocations = await api.getLocations(form.city);
+        } catch (e) {
+          // Ignore backend errors, we can fallback entirely to Google
+        }
+        
+        if (isLoaded) {
+          const placesService = new window.google.maps.places.PlacesService(document.createElement('div'));
+          placesService.textSearch(
+            { query: `top tourist attractions in ${form.city}` },
+            (results, status) => {
+              if (status === window.google.maps.places.PlacesServiceStatus.OK && results) {
+                const googleLocs = results.slice(0, 16).map(place => ({
+                  name: place.name,
+                  lat: place.geometry.location.lat(),
+                  lng: place.geometry.location.lng(),
+                  rating: place.rating || 4.0,
+                  open_time: "08:00",
+                  close_time: "20:00",
+                  visit_duration: 60,
+                  mandatory: false
+                }));
+                
+                // Merge and deduplicate by name
+                const allLocs = [...backendLocations];
+                googleLocs.forEach(gLoc => {
+                  if (!allLocs.some(l => l.name === gLoc.name)) {
+                    allLocs.push(gLoc);
+                  }
+                });
+                setLocations(allLocs);
+              } else {
+                setLocations(backendLocations);
+              }
+              setLoading(l => ({ ...l, locations: false }));
+            }
+          );
+        } else {
+          setLocations(backendLocations);
+          setLoading(l => ({ ...l, locations: false }));
+        }
       } catch (err) {
-        setError(`Failed to load locations for ${form.city}`);
-      } finally {
+        setLocations([]);
         setLoading(l => ({ ...l, locations: false }));
       }
     };
     fetchLocations();
-  }, [form.city]);
+  }, [form.city, isLoaded]);
 
   const handleLocationToggle = (locObj) => {
     setForm(f => {
@@ -94,6 +135,32 @@ export default function TripPlanner() {
         if (isSelected) return f;
         return { ...f, selectedLocations: [...f.selectedLocations, newLoc] };
       });
+    }
+  };
+
+  const handleAutoPlan = async () => {
+    if (locations.length === 0) return;
+    
+    // Pick top places based on rating (4-5 per day)
+    const placesNeeded = parseInt(form.days) * 4;
+    const sortedLocs = [...locations].sort((a, b) => b.rating - a.rating);
+    const selected = sortedLocs.slice(0, placesNeeded);
+    
+    setForm(f => ({ ...f, selectedLocations: selected }));
+    
+    setLoading(l => ({ ...l, submit: true }));
+    setError(null);
+    try {
+      const response = await api.predictItinerary({
+        city: form.city,
+        days: parseInt(form.days),
+        preference: form.preference,
+        locations: selected
+      });
+      navigate('/results', { state: { result: response, form: { ...form, selectedLocations: selected } } });
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to auto-generate itinerary');
+      setLoading(l => ({ ...l, submit: false }));
     }
   };
 
@@ -280,17 +347,27 @@ export default function TripPlanner() {
             )}
           </div>
 
-          <button
-            type="submit"
-            disabled={loading.submit || form.selectedLocations.length === 0}
-            className="w-full flex items-center justify-center gap-2 py-4 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white rounded-xl font-semibold text-lg transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading.submit ? (
-              <><Loader2 className="w-5 h-5 animate-spin" /> Generating Itinerary...</>
-            ) : (
-              <>Generate Optimized Itinerary <ChevronRight className="w-5 h-5" /></>
-            )}
-          </button>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <button
+              type="button"
+              onClick={handleAutoPlan}
+              disabled={loading.submit || locations.length === 0}
+              className="w-full flex items-center justify-center gap-2 py-4 bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 text-white rounded-xl font-semibold text-lg transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading.submit ? <Loader2 className="w-5 h-5 animate-spin" /> : '✨ Auto-Plan My Trip'}
+            </button>
+            <button
+              type="submit"
+              disabled={loading.submit || form.selectedLocations.length === 0}
+              className="w-full flex items-center justify-center gap-2 py-4 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white rounded-xl font-semibold text-lg transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading.submit ? (
+                <><Loader2 className="w-5 h-5 animate-spin" /> Generating Itinerary...</>
+              ) : (
+                <>Generate Optimized Itinerary <ChevronRight className="w-5 h-5" /></>
+              )}
+            </button>
+          </div>
         </form>
       </div>
     </div>

@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
+import math
 from sklearn.metrics import (
     accuracy_score,
     f1_score,
@@ -368,26 +369,92 @@ def predict_itinerary(trip_data: dict, artifact) -> dict:
         df_locs["pred_warning"] = warning_model.predict(X_proc)
 
     # Format result
-    # Group by predicted days if multiple days exist (simplified)
-    # For this model, we'll assign to Day 1 and sort by predicted rank
-    sorted_locs = df_locs.sort_values("pred_rank")
+    # Geographic Routing Override
+    unvisited = df_locs.to_dict('records')
+    # Pick the highest rated location as the start to ensure a good anchor
+    unvisited.sort(key=lambda x: x.get("rating", 0), reverse=True)
     
-    schedule = []
-    for _, row in sorted_locs.iterrows():
-        schedule.append({
-            "location": row["location_name"],
-            "arrival_time": min_to_time(row["pred_arrival"]),
-            "departure_time": min_to_time(row["pred_departure"]),
-            "status": str(row["pred_status"])
+    sorted_locs_list = []
+    if unvisited:
+        current = unvisited.pop(0)
+        sorted_locs_list.append(current)
+        
+        while unvisited:
+            nearest = None
+            min_dist = float('inf')
+            for candidate in unvisited:
+                dist = haversine(current["lat"], current["lng"], candidate["lat"], candidate["lng"])
+                if dist < min_dist:
+                    min_dist = dist
+                    nearest = candidate
+            
+            current = nearest
+            unvisited.remove(current)
+            sorted_locs_list.append(current)
+            
+
+    sorted_locs = pd.DataFrame(sorted_locs_list)
+    
+    total_locations = len(sorted_locs)
+    requested_days = max(1, min(days, total_locations))
+
+    items_per_day = math.ceil(total_locations / requested_days)
+    
+    itinerary = []
+    
+    for day_index in range(requested_days):
+        day_schedule = []
+        start_idx = day_index * items_per_day
+        end_idx = min(start_idx + items_per_day, total_locations)
+        
+        chunk = sorted_locs.iloc[start_idx:end_idx]
+        
+        current_time_min = 480 # Start day at 08:00
+        prev_lat, prev_lng = None, None
+        
+        for _, row in chunk.iterrows():
+            # Calculate travel time
+            travel_time_min = 0
+            if prev_lat is not None and prev_lng is not None:
+                dist_km = haversine(prev_lat, prev_lng, row["lat"], row["lng"])
+                travel_time_min = int(dist_km * 3) # Roughly 20km/h avg city speed
+                
+            open_min = row.get("open_min", 480)
+            close_min = row.get("close_min", 1200)
+            visit_duration = row.get("visit_duration", 60)
+            
+            # Fast forward clock to open time if we arrive too early
+            arrival_min = max(current_time_min + travel_time_min, open_min)
+            departure_min = arrival_min + visit_duration
+            
+            # Strict time enforcement
+            if departure_min > close_min or departure_min > 1200: # Max 20:00 limit
+                status = "skipped"
+                day_schedule.append({
+                    "location": row["location_name"],
+                    "arrival_time": "N/A",
+                    "departure_time": "N/A",
+                    "status": status
+                })
+            else:
+                status = "feasible"
+                current_time_min = departure_min
+                prev_lat, prev_lng = row["lat"], row["lng"]
+                
+                day_schedule.append({
+                    "location": row["location_name"],
+                    "arrival_time": min_to_time(arrival_min),
+                    "departure_time": min_to_time(departure_min),
+                    "status": status
+                })
+            
+        itinerary.append({
+            "day": day_index + 1,
+            "schedule": day_schedule
         })
 
     result = {
-        "itinerary": [
-            {
-                "day": 1,
-                "schedule": schedule
-            }
-        ],
+        "itinerary": itinerary,
         "total_travel_time": f"{int(df_locs['visit_duration'].sum())} minutes",
         "total_distance": f"{df_locs['geo_span_km'].max():.2f} km",
         "warnings": [

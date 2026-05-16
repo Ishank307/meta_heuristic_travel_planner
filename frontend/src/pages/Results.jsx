@@ -87,8 +87,8 @@ export default function Results() {
                             <Clock className="w-4 h-4" />
                             {item.arrival_time} - {item.departure_time}
                           </div>
-                          <div className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-emerald-500/10 text-emerald-400 rounded-full">
-                            <CheckCircle2 className="w-3 h-3" />
+                          <div className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full ${item.status === 'skipped' ? 'bg-red-500/10 text-red-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
+                            {item.status === 'skipped' ? <AlertTriangle className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3" />}
                             {item.status}
                           </div>
                         </div>
