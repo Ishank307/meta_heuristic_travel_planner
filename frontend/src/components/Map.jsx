@@ -9,7 +9,7 @@ const containerStyle = {
   height: '100%'
 };
 
-export default function Map({ itinerary, selectedLocations }) {
+export default function Map({ itinerary, selectedLocations, cityCenter }) {
   const { isLoaded, loadError } = useJsApiLoader({
     id: 'google-map-script',
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '',
@@ -17,22 +17,27 @@ export default function Map({ itinerary, selectedLocations }) {
   });
 
   const mapData = useMemo(() => {
-    if (!itinerary || !selectedLocations || !selectedLocations.length) return { markers: [], path: [] };
+    if (!selectedLocations || !selectedLocations.length) return { markers: [] };
     
     const markers = [];
-    const path = [];
     
-    // Flatten all schedules
-    const schedules = itinerary.flatMap(day => day.schedule);
-    
-    schedules.forEach((item, index) => {
-      const locData = selectedLocations.find(l => l.name === item.location);
-      if (locData) {
-        const point = { lat: locData.lat, lng: locData.lng };
-        markers.push({ ...point, label: (index + 1).toString(), title: item.location });
-        path.push(point);
-      }
-    });
+    if (itinerary && itinerary.length > 0) {
+      // Flatten all schedules
+      const schedules = itinerary.flatMap(day => day.schedule);
+      
+      schedules.forEach((item, index) => {
+        const locData = selectedLocations.find(l => l.name === item.location);
+        if (locData) {
+          const point = { lat: locData.lat, lng: locData.lng };
+          markers.push({ ...point, label: (index + 1).toString(), title: item.location });
+        }
+      });
+    } else {
+      // Preview mode: Just plot the selected locations without lines
+      selectedLocations.forEach((loc) => {
+        markers.push({ lat: loc.lat, lng: loc.lng, title: loc.name });
+      });
+    }
 
     return { markers };
   }, [itinerary, selectedLocations]);
@@ -40,7 +45,10 @@ export default function Map({ itinerary, selectedLocations }) {
   const [directions, setDirections] = useState(null);
 
   useEffect(() => {
-    if (!isLoaded || mapData.markers.length < 2) return;
+    if (!isLoaded || mapData.markers.length < 2 || !itinerary || itinerary.length === 0) {
+      setDirections(null);
+      return;
+    }
 
     const directionsService = new window.google.maps.DirectionsService();
 
@@ -70,7 +78,7 @@ export default function Map({ itinerary, selectedLocations }) {
 
   const center = mapData.markers.length > 0 
     ? mapData.markers[0] 
-    : { lat: 18.944, lng: 72.823 }; // Fallback Mumbai
+    : (cityCenter || { lat: 18.944, lng: 72.823 }); // Fallback Mumbai
 
   if (loadError) return <div className="w-full h-full bg-slate-800 rounded-xl flex items-center justify-center text-red-400">Error loading map</div>;
   if (!isLoaded) return <div className="w-full h-full bg-slate-800 animate-pulse rounded-xl"></div>;
@@ -100,7 +108,7 @@ export default function Map({ itinerary, selectedLocations }) {
           <Marker 
             key={i} 
             position={marker} 
-            label={{ text: marker.label, color: 'white', fontWeight: 'bold' }}
+            label={marker.label ? { text: marker.label, color: 'white', fontWeight: 'bold' } : undefined}
             title={marker.title}
           />
         ))}

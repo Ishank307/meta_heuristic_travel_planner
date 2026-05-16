@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Autocomplete, useJsApiLoader } from '@react-google-maps/api';
 import { api } from '../services/api';
 import { MapPin, Calendar, Settings, ChevronRight, Loader2, Search, Plus } from 'lucide-react';
+import Map from '../components/Map';
 
 const libraries = ['places'];
 
@@ -189,11 +190,12 @@ export default function TripPlanner() {
 
   return (
     <div className="min-h-screen bg-slate-900 pt-20 px-6 pb-12">
-      <div className="max-w-4xl mx-auto space-y-8">
-        <div>
-          <h1 className="text-3xl font-bold text-white mb-2">Plan Your Trip</h1>
-          <p className="text-slate-400">Configure your preferences to get an AI-optimized itinerary.</p>
-        </div>
+      <div className="max-w-7xl mx-auto grid lg:grid-cols-12 gap-8">
+        <div className="lg:col-span-7 space-y-8">
+          <div>
+            <h1 className="text-3xl font-bold text-white mb-2">Plan Your Trip</h1>
+            <p className="text-slate-400">Configure your preferences to get an AI-optimized itinerary.</p>
+          </div>
 
         {error && (
           <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400">
@@ -369,6 +371,16 @@ export default function TripPlanner() {
             </button>
           </div>
         </form>
+        </div>
+
+        <div className="hidden lg:block lg:col-span-5 relative">
+          <div className="sticky top-24 h-[calc(100vh-8rem)] rounded-2xl overflow-hidden border border-white/5 shadow-2xl">
+            <Map 
+              selectedLocations={form.selectedLocations} 
+              cityCenter={locations.length > 0 ? { lat: locations[0].lat, lng: locations[0].lng } : null}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );
