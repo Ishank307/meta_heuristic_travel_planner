@@ -8,7 +8,7 @@ class PredictRequest(BaseModel):
     city: str
     days: int = Field(default=1, ge=1)
     preference: str = Field(default="medium")
-    locations: List[str]
+    locations: List[dict]
 
 class LocationSchema(BaseModel):
     name: str

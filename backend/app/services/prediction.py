@@ -29,17 +29,25 @@ def get_artifact():
         print("Model loaded successfully.")
     return _artifact
 
-def predict(city: str, days: int, preference: str, location_names: list) -> dict:
+def predict(city: str, days: int, preference: str, locations: list) -> dict:
     """
     Format request for the predict_itinerary function.
     """
     artifact = get_artifact()
     
+    # Process locations to ensure they have the minimum required format
+    processed_locations = []
+    for loc in locations:
+        if isinstance(loc, str):
+            processed_locations.append({"name": loc})
+        elif isinstance(loc, dict):
+            processed_locations.append(loc)
+            
     trip_data = {
         "city": city,
         "days": days,
         "preference": preference,
-        "locations": [{"name": name} for name in location_names]
+        "locations": processed_locations
     }
     
     result = predict_itinerary(trip_data, artifact)

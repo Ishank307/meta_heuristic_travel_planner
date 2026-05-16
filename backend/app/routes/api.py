@@ -28,7 +28,7 @@ def predict_itinerary_route(request: PredictRequest):
             city=request.city,
             days=request.days,
             preference=request.preference,
-            location_names=request.locations
+            locations=request.locations
         )
         return result
     except Exception as e:
